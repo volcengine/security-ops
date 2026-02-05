@@ -1,0 +1,76 @@
+name: Shared Gitleaks Scan
+
+on:
+  # 1. 代码推送到任何分支时触发（最常用的实时拦截）
+  push:
+    branches: [ "**" ] 
+  
+  # 2. 提交 Pull Request 时触发（防止合并到主分支）
+  pull_request:
+  
+  # 3. 合并队列触发（如果使用了 GitHub Merge Queue）
+  merge_group:
+
+  # 4. 新增：允许手动点击按钮触发（用于安全审计或测试新规则）
+  workflow_dispatch:
+
+  workflow_call:
+    # 允许调用方传入参数（可选）
+    inputs:
+      config_path:
+        required: false
+        type: string
+        default: "./gitleaks.toml"
+        description: "Path to gitleaks config file"
+    secrets:
+      # 如果需要访问私有仓库下载配置，可能需要 Token
+      ORG_PAT:
+        required: false
+
+jobs:
+  gitleaks:
+    name: Gitleaks Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Gitleaks 需要完整的 git 历史
+
+      - name: Checkout Security Config
+        uses: actions/checkout@v4
+        with:
+          repository: volcengine/security-ops # 替换为你的组织名/仓库名
+          path: security-ops-config
+
+      - name: Run Gitleaks
+        id: gitleaks # 添加 ID 以便后续步骤引用状态
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} 
+          GITLEAKS_CONFIG: "security-ops-config/gitleaks.toml"
+
+      # 新增：当扫描失败时，在 Actions 摘要中显示具体的豁免指引
+      - name: Report Gitleaks Failure
+        if: failure() # 仅在扫描失败时运行
+        run: |
+          # 仅保留这一行 Error Annotation，用于在文件变动处高亮提醒
+          echo "::error title=Gitleaks Scan Failed::发现潜在的敏感信息泄露！"
+          
+          # 将详细说明输出到 Job Summary (支持 Markdown)
+          cat <<EOF >> $GITHUB_STEP_SUMMARY
+          ## 🚨 Gitleaks Scan Failed
+          发现潜在的敏感信息泄露！请检查代码。
+          
+          **重要提示：** 一旦确认发生敏感信息泄露，应默认该信息已被公开访问。请务必立即采取止损措施，包括但不限于轮转密钥和吊销证书。
+
+          ### 如何处理误报 (False Positive)?
+          如果确认是误报，请在代码中添加豁免注释：
+
+          **方法 1 (单行)：**
+          \`\`\`javascript
+          const token = 'fake'; // gitleaks:allow
+          \`\`\`
+
+          EOF
