@@ -1,0 +1,18 @@
+title = "Organization Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for the organization"
+paths = [
+    '''go\.sum''',
+    '''yarn\.lock'''
+]
+
+# 这里可以扩展自定义规则，例如内部特定的 Token 格式
+# [[rules]]
+# id = "internal-api-token"
+# description = "Internal API Token"
+# regex = '''IT-[a-z0-9]{16}'''
+# tags = ["secret", "internal"]
